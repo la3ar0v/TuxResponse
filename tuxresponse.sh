@@ -53,13 +53,14 @@ function _enter_target_details(){
   #TODO: if successful, go back to main menu ?
 }
 
-#cleanup remote system
+#CLEANUP REMOTE SYSTEM FROM SCRIPT
 
 function _target_cleanup(){
   ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} "rm -r ${REMOTE_HOME}"
   TARGET_HOST=''
 }
 
+#CREATE DISK IMAGE WITH DD
 function _create_disk_image(){
 
   if [ "${TARGET_HOST}" ]; then
@@ -73,7 +74,7 @@ function _create_disk_image(){
   DISK_OPT="$(echo -e "${DISK_DRIVES}\n${DISK_PART}")"
   OPT_COUNT=$(echo "${DISK_OPT}" | wc -w)
 
-  PS3="Please select disk to copy [1-${OPT_COUNT}]: "
+  PS3="Please select disk to image [1-${OPT_COUNT}]: "
   select opt in ${DISK_OPT}; do
 
     for ((i = 0; i < ${OPT_COUNT}; i++)); do
@@ -115,7 +116,7 @@ function _create_disk_image(){
   #if output file exists
   if [ -f "${IMAGE_OUT}" ]; then
     #ask user if we have to delete it
-    read -p "${IMAGE_OUT} exists. Overwrite [y/n]"
+    read -p "${IMAGE_OUT} exists. Overwrite? [y/n]"
     if [ "${REPLY}" == 'y' ]; then
       rm -f "${IMAGE_OUT}"
     else
@@ -125,19 +126,19 @@ function _create_disk_image(){
 
   #creating disk image
   if [ "${TARGET_HOST}" ]; then
-    DD_CMD="ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} 'dd if=${IMAGE_IN} bs=8M conv=noerror,sync' | pv | dd of='${IMAGE_OUT}'"
+    DD_CMD="ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} 'dd if=${IMAGE_IN} bs=4K conv=noerror,sync' | pv | dd of='${IMAGE_OUT}'"
   else
-    DD_CMD="dd if=${IMAGE_IN} | pv | dd of='${IMAGE_OUT}' bs=8M conv=noerror,sync"
+    DD_CMD="dd if=${IMAGE_IN} | pv | dd of='${IMAGE_OUT}' bs=4K conv=noerror,sync"
   fi
 
   echo "DD_CMD=${DD_CMD}"
-  read -p 'Confirm clone command [y/n]: '
+  read -p 'Confirm image command? [y/n]: '
   if [ "${REPLY}" == 'y' ]; then
     eval ${DD_CMD}
   fi
 }
 
-#memory dump function
+#LIME MEMORY DUMP FUNCTION
 
 function _create_mem_image(){
   if [ "${TARGET_HOST}" ]; then
@@ -156,7 +157,7 @@ function _create_mem_image(){
   fi
   IMAGE_OUT="${IMAGE_STORAGE}/${IMAGE_IN_NAME}.lime"
 
-  # Check if we have size in storage
+  # Check if we have size on disk
   STORAGE_SIZE_AVAIL=$(df -k "${IMAGE_STORAGE}" | tail -n 1 | sed 's/[ \t]\+/ /g' | cut -f4 -d' ')
   if [ ${STORAGE_SIZE_AVAIL} -lt ${MEM_SIZE} ]; then
     echo "Error: Storage size has only ${STORAGE_SIZE_AVAIL} bytes, ${MEM_SIZE} needed!"
@@ -174,7 +175,7 @@ function _create_mem_image(){
     fi
   fi
 
-  #create memory image
+  #CREATING MEMORY IMAGE
   echo "Inserting LiME module ..."
   if [ "${TARGET_HOST}" ]; then
     ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} "insmod /tmp/lime.ko 'path=tcp:${MEM_DUMP_PORT} format=lime'" &
@@ -192,7 +193,7 @@ function _create_mem_image(){
   fi
 }
 
-#install LiME
+#INSTALL LiME
 function init_lime(){
 
   if [ -f /usr/bin/yum ]; then
@@ -214,6 +215,8 @@ function init_lime(){
   rm -rf LiME-1.8.1
 }
 
+#FUNCTION TO DISPLAY MODIFIED FILES IN A CERTAIN TIME PERIOD
+
 function modified_files_period_select(){
   local timestamp='/tmp/.find_timestamp'
   local period=("minute" "hour" "day" "week" "month" "Back")
@@ -234,6 +237,8 @@ function modified_files_period_select(){
   touch -d "1 $opt ago" ${timestamp}
   find / -type f -newer ${timestamp}
 }
+
+#FUNCTION TO DISPLAY ALL FILES CHANGED BY PACKAGES
 
 function packaged_files_changed(){
   if [ "$(which rpm || true)" ]; then
@@ -257,6 +262,8 @@ function exiftool_select(){
   echo "Starting shell, press Ctrl-D or type exit to return to menu."
   bash
 }
+
+#FUNCTION TO DISPLAY CRONTAB
 
 function list_all_crontab(){
   for user in $(getent passwd | cut -f1 -d:); do
@@ -300,6 +307,8 @@ CMD_EOF
 
 }
 
+#FUNCTION TO DISPLAY ALL FILES ON STARTUP
+
 function list_all_onstartup(){
   #show scripts for each runlevel
   for d in rc1.d rc2.d rc3.d rc5.d rc6.d rc.d init.d; do
@@ -327,6 +336,8 @@ function list_all_onstartup(){
   grep -H '@reboot' /etc/crontab
 }
 
+#GET BASH HISTORY FOR ALL USERS
+
 function cat_all_bash_history(){
 
   cat <<CMD_EOF
@@ -349,7 +360,7 @@ CMD_EOF
     fi
   done
 }
-
+#DUMP PROCESS WITH GCORE
 function dump_process_select(){
   read -p "Enter process PID: " DUMP_PID
   read -p "Enter output file: " DUMP_FILE
@@ -388,6 +399,7 @@ function _init_exiftool(){
   fi
 }
 
+#CHCKROOTKIT
 function _init_chkrootkit(){
   local filename='chkrootkit-0.53.ubuntu-18.tar.gz'
 
@@ -402,9 +414,9 @@ function _init_chkrootkit(){
   fi
 }
 
+#DOWNLOAD & INSTALL YARA WITH RULES
 function _init_yara(){
 
-  #download YARA rules
   pushd /tmp/
   wget https://github.com/Yara-Rules/rules/archive/master.zip
   unzip master.zip
@@ -443,7 +455,8 @@ function show_distro_ver(){
 
 function init_deps(){
 
-  #install various packages needed for menus to work
+  #INSTALL VARIOUS BINARIES FOR MENU TO WORK
+
   if [ "${DISTRO}" == 'centos' ]; then
     yum -y install wget unzip gdb pv
   elif [ "${DISTRO}" == 'ubuntu' ]; then
@@ -451,9 +464,11 @@ function init_deps(){
     if [ "${DISTRO_VER}" == '18' ]; then
       apt-add-repository universe
     fi
-    apt-get -y install wget unzip gdb debsums pv netstat
+    apt-get -y install wget unzip debsums pv netstat
   fi
 }
+
+#FUNCTION TO CHECK DEPENDANCY BINS
 
 function init_check_binaries(){
   local -n arr=$1
@@ -516,8 +531,8 @@ function selection_to_cmd(){
   CMD=''
   SELECTION_ERR=''
 
-  local ci=${1##*,} #get the command index
-  let ci=ci-1 || true;      #arrays are 0 based, menu is starts from 1
+  local ci=${1##*,} #GET COMMAND INDEX
+  let ci=ci-1 || true;      #ARRAYS START FROM 0, MENU WITH 1
 
   case ${1} in
       '0')   options=("${menu0[@]}");;
@@ -578,8 +593,11 @@ function exec_CMD(){
     eval ${1} 2>&1 | tee "${EVIDENCE_DIR}/${OUTFILENAME}"
   fi
 
-  set -e; #enable error flag
+  set -e; #ENABLE ERROR FLAG
 }
+
+
+# MAIN MENU
 
 function top_menu(){
 
@@ -757,7 +775,7 @@ CMD_EOF
   exec 1>&6 6>&-      # Restore stdout and close file descriptor #6.
 }
 
-#End functions
+#ENDO OF FUNCTIONS
 
 internal_init;
 
