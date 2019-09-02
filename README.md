@@ -50,3 +50,29 @@ function init_lime(){
 When responding to incidents, if you have to install LiME by manually typing all the commands, that will slow you down 
 significantly.
 
+# Functionality
+
+## 1) Live Response
+### 1) Footprint System
+### 2) File System Tools
+### 3) Incident Response Tools
+### 4) Process Analysis Tools 
+### 5) Network Connections Analysis
+### 6) Users
+### 7) Bash History
+### 8) Evidence Of Persistence 
+       1) List All Cron Jobs
+       2) List All on-startup/boot programs
+### 9) Dump All Logs (/var/log)
+       1) Dump Users .bash_history
+       2) Find logs with binary inside
+
+## 2) Connect To Target - use SSH to analyze remote system.
+
+## 3) Take Memory Dump (LKM LiME)
+
+## 4) Take disk image (DD)
+
+## 5) Generate HTML Report
+
+## 6) Install Software
