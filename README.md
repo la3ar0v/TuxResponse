@@ -1,6 +1,8 @@
 # TuxResponse
 Linux Incident Response
 
+![image](https://user-images.githubusercontent.com/13645356/64132606-3a363200-cdd1-11e9-83f9-b1d697af2cf0.png)
+
 TuxResponse is a IR script written in bash to automate incident response activities on unprotected Linux systems. Usually corporate systems would have some kind of monitoring and control, but there are exceptions due to shadow IT and non-standard images deployed in corps. 
 What amounts to typing of 10 commands with mistakes, can be done in a press of a button.
 
