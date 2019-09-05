@@ -3,8 +3,8 @@ Linux Incident Response
 
 ![image](https://user-images.githubusercontent.com/13645356/64132606-3a363200-cdd1-11e9-83f9-b1d697af2cf0.png)
 
-TuxResponse is a IR script written in bash to automate incident response activities on unprotected Linux systems. Usually corporate systems would have some kind of monitoring and control, but there are exceptions due to shadow IT and non-standard images deployed in corps. 
-What amounts to typing of 10 commands with mistakes, can be done in a press of a button.
+TuxResponse is incident response script for linux systems written in bash. It can automate incident response activities on Linux systems and enable you to triage systems quickly, while not compromising with the results. Usually corporate systems would have some kind of monitoring and control, but there are exceptions due to shadow IT and non-standard images deployed in corps. 
+What amounts to typing of 10 commands with trial end testing, can be done in a press of a button.
 
 Tested on:
 - Ubuntu 14+
@@ -21,11 +21,11 @@ External tools in the package:
 - Chckrootkit
 - Yara + Linux scanning rules (needs network to fetch the repo)
 
+________________________________________________________
 
+###### Example automation:
 
-Example automation:
-
-#INSTALL LiME
+INSTALL LiME
 function init_lime(){
 
   if [ -f /usr/bin/yum ]; then
