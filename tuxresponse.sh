@@ -781,8 +781,9 @@ internal_init;
 
 cat << EOF
 
-[*] Copyright Hristiyan Lazarov [*]
-
+[*] 	Hristiyan Lazarov      [*]
+[*]     @la3ar0v               [*]
+[*]     lazarov@lazarov.tech   [*]
 
 +--------------------------------------------------------------+
 |  _______         _____                                       |
