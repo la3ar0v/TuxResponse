@@ -99,10 +99,12 @@ significantly.
           That option enables you to compile LiME from source and dump the RAM memory off the system. This is the easiest way to do it as the other way around would be to compile from source for all major kernel versions and insert the LKM.
 
 ##### 4) Take disk image (DD)
-          ```That option enables you to do a full disk image of the target system using well-known tool - dd. The function is taking source and destination as parameters and inserts them in the following command 'dd if=${IMAGE_IN} | pv | dd of='${IMAGE_OUT}' bs=4K conv=noerror,sync'. If you're investigating remote system, the script is going to copy itself there. Then if the parameter ${TARGET_HOST} is set, then the script is going to download the image to analyst system using this command >> "ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} 'dd if=${IMAGE_IN} bs=4K conv=noerror,sync' | pv | dd of='${IMAGE_OUT}'" (im heavily using pv to make sure progress is tracked)```
-          
+```
+That option enables you to do a full disk image of the target system using well-known tool - dd. The function is taking source and destination as parameters and inserts them in the following command 'dd if=${IMAGE_IN} | pv | dd of='${IMAGE_OUT}' bs=4K conv=noerror,sync'. If you're investigating remote system, the script is going to copy itself there. Then if the parameter ${TARGET_HOST} is set, then the script is going to download the image to analyst system using this command >> "ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} 'dd if=${IMAGE_IN} bs=4K conv=noerror,sync' | pv | dd of='${IMAGE_OUT}'" (im heavily using pv to make sure progress is tracked)
+```       
 ##### 5) Generate HTML Report
-          Everything you do is recorded in text files, thus easy to go back and look at the output. The beauty of this is that you can upload it in your favourite log analysis tools and make sense of it at later stage. On top of that, you can use that function to generate HTML report and look at the command-generated output in a more human readable form.
+
+Everything you do is recorded in text files, thus easy to go back and look at the output. The beauty of this is that you can upload it in your favourite log analysis tools and make sense of it at later stage. On top of that, you can use that function to generate HTML report and look at the command-generated output in a more human readable form.
 
 ##### 6) Install Software
           Install binaries that are required by the script to function correctly.
