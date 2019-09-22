@@ -797,7 +797,7 @@ cat << EOF
 |							       |
 +--------------------------------------------------------------+
 
-[*] Linux Incident Response framework written in bash [*]
+[*] Linux Incident Response tool written in bash [*]
 
 
 EOF
