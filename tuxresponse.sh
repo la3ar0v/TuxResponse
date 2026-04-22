@@ -1,7 +1,19 @@
-#!/bin/bash -e
+#!/bin/bash
 # Copyright Hristiyan Lazarov
+set -euo pipefail
 
+VERSION='1.1'
 EVIDENCE_DIR='evidence'
+MANIFEST_FILE="${EVIDENCE_DIR}/manifest.txt"
+
+# Initialize globals up-front so `set -u` doesn't trip on first reference.
+CMD=''
+SELECTION='0'
+SELECTION_ERR=''
+OUTFILENAME=''
+DISTRO=''
+DISTRO_VER=''
+MENU_LANG='en'
 
 #details for remote target
 REMOTE_HOME='/opt/TuxResponse'
@@ -124,17 +136,26 @@ function _create_disk_image(){
     fi
   fi
 
-  #creating disk image
-  if [ "${TARGET_HOST}" ]; then
-    DD_CMD="ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} 'dd if=${IMAGE_IN} bs=4K conv=noerror,sync' | pv | dd of='${IMAGE_OUT}'"
-  else
-    DD_CMD="dd if=${IMAGE_IN} | pv | dd of='${IMAGE_OUT}' bs=4K conv=noerror,sync"
+  # Validate IMAGE_IN is a real block device before using it anywhere.
+  if [[ ! "${IMAGE_IN}" =~ ^/dev/[a-zA-Z0-9]+$ ]]; then
+    echo "Error: refusing unsafe device path '${IMAGE_IN}'"
+    return
   fi
 
-  echo "DD_CMD=${DD_CMD}"
-  read -p 'Confirm image command? [y/n]: '
+  #creating disk image
+  echo "Imaging ${IMAGE_IN} -> ${IMAGE_OUT}"
+  read -r -p 'Confirm image command? [y/n]: '
   if [ "${REPLY}" == 'y' ]; then
-    eval ${DD_CMD}
+    if [ -n "${TARGET_HOST}" ]; then
+      ssh -p"${TARGET_PORT}" "${TARGET_USER}@${TARGET_HOST}" \
+        "dd if=${IMAGE_IN} bs=4K conv=noerror,sync" | pv | dd of="${IMAGE_OUT}"
+    else
+      dd if="${IMAGE_IN}" bs=4K conv=noerror,sync | pv | dd of="${IMAGE_OUT}"
+    fi
+    if [ -f "${IMAGE_OUT}" ]; then
+      sha256sum "${IMAGE_OUT}" | tee "${IMAGE_OUT}.sha256"
+      _record_evidence "${IMAGE_OUT}"
+    fi
   fi
 }
 
@@ -218,7 +239,8 @@ function init_lime(){
 #FUNCTION TO DISPLAY MODIFIED FILES IN A CERTAIN TIME PERIOD
 
 function modified_files_period_select(){
-  local timestamp='/tmp/.find_timestamp'
+  # Use find -newermt instead of touching a file on the target filesystem,
+  # which would otherwise contaminate evidence (atime/mtime/ctime of /tmp).
   local period=("minute" "hour" "day" "week" "month" "Back")
   PS3="Please enter your choice[1-${#period[@]}]: "
 
@@ -228,14 +250,12 @@ function modified_files_period_select(){
         [1-5])
           break ;;
         6)
-          return;
-          break;;
+          return;;
         *) echo "invalid option $REPLY";;
     esac
   done
 
-  touch -d "1 $opt ago" ${timestamp}
-  find / -type f -newer ${timestamp}
+  find / -xdev -type f -newermt "1 ${opt} ago" 2>/dev/null
 }
 
 #FUNCTION TO DISPLAY ALL FILES CHANGED BY PACKAGES
@@ -362,10 +382,19 @@ CMD_EOF
 }
 #DUMP PROCESS WITH GCORE
 function dump_process_select(){
-  read -p "Enter process PID: " DUMP_PID
-  read -p "Enter output file: " DUMP_FILE
+  read -r -p "Enter process PID: " DUMP_PID
+  read -r -p "Enter output file: " DUMP_FILE
 
-  gcore -a -o "${DUMP_FILE}" ${DUMP_PID}
+  if [[ ! "${DUMP_PID}" =~ ^[0-9]+$ ]]; then
+    echo "Error: PID must be numeric"
+    return
+  fi
+  if [ ! -d "/proc/${DUMP_PID}" ]; then
+    echo "Error: no such process ${DUMP_PID}"
+    return
+  fi
+
+  gcore -a -o "${DUMP_FILE}" "${DUMP_PID}"
 }
 
 function _init_exiftool(){
@@ -464,7 +493,7 @@ function init_deps(){
     if [ "${DISTRO_VER}" == '18' ]; then
       apt-add-repository universe
     fi
-    apt-get -y install wget unzip debsums pv netstat
+    apt-get -y install wget unzip debsums pv net-tools
   fi
 }
 
@@ -574,23 +603,41 @@ function selection_to_cmd(){
   esac
 }
 
+function _record_evidence(){
+  # $1 = evidence file path
+  local f="$1"
+  [ -f "${f}" ] || return 0
+  local hash
+  hash=$(sha256sum "${f}" | cut -f1 -d' ')
+  local host="${TARGET_HOST:-localhost}"
+  printf '%s  %s  %s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${hash}" "${host}" "${f}" >> "${MANIFEST_FILE}"
+}
+
 function exec_CMD(){
 
   set +e; #disable error flag
 
+  local stamp host
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  host="${TARGET_HOST:-localhost}"
+
   #if its an internal command
-  if [ ${CMD:0:1} == '_' ]; then
+  if [ "${CMD:0:1}" == '_' ]; then
     #internal command may change global variables, so they can't run in subshell, or be piped!
-    ${1}
+    "${1}"
 
-  elif [ "${TARGET_HOST}" ]; then
-    OUTFILENAME="$(date '+%d-%m-%Y_%T')_${TARGET_HOST}_${SELECTION//,/.}.txt"
-    ssh -p${TARGET_PORT} ${TARGET_USER}@${TARGET_HOST} "cd ${REMOTE_HOME}; ./forensics.sh ${SELECTION}" 2>&1 | tee "${EVIDENCE_DIR}/${OUTFILENAME}"
+  elif [ -n "${TARGET_HOST}" ]; then
+    OUTFILENAME="${stamp}_${host}_${SELECTION//,/.}.txt"
+    ssh -p"${TARGET_PORT}" "${TARGET_USER}@${TARGET_HOST}" "cd ${REMOTE_HOME}; ./forensics.sh ${SELECTION}" 2>&1 \
+      | tee "${EVIDENCE_DIR}/${OUTFILENAME}"
+    _record_evidence "${EVIDENCE_DIR}/${OUTFILENAME}"
   else
-    OUTFILENAME="$(date '+%d-%m-%Y_%T')_localhost_${SELECTION//,/.}.txt"
+    OUTFILENAME="${stamp}_${host}_${SELECTION//,/.}.txt"
 
-    #TODO: this pipe creates a subshell, and all modified variables are not saved !!!
-    eval ${1} 2>&1 | tee "${EVIDENCE_DIR}/${OUTFILENAME}"
+    # CMD comes from the internal cmds arrays (not user input). Pipes/redirects
+    # in those strings need shell interpretation, so use bash -c rather than eval.
+    bash -c "${1}" 2>&1 | tee "${EVIDENCE_DIR}/${OUTFILENAME}"
+    _record_evidence "${EVIDENCE_DIR}/${OUTFILENAME}"
   fi
 
   set -e; #ENABLE ERROR FLAG
@@ -665,7 +712,7 @@ function detect_os(){
     DISTRO_VER=$(grep VERSION_ID /etc/os-release | tr -d '"' | cut -f2 -d= | cut -f1 -d.)
 
   elif [ -f /etc/arch-release ]; then
-		DISTO='arch'
+		DISTRO='arch'
 		DISTRO_VER='';	#there is no release id in Arch !!!
 
 	elif [ -f /etc/centos-release ]; then
@@ -735,8 +782,17 @@ CMD_EOF
   echo "</head>"
   echo "<body>"
 
-  NUM_COMMANDS=$(ls evidence/ | wc -w)
-  echo "<p>Report generated on $(date), based on ${NUM_COMMANDS} evidence files.</p>"
+  shopt -s nullglob
+  local evidence_files=(evidence/*.txt)
+  # Exclude the manifest from the evidence listing.
+  local filtered=()
+  for f in "${evidence_files[@]}"; do
+    [ "$f" = "${MANIFEST_FILE}" ] && continue
+    filtered+=("$f")
+  done
+  evidence_files=("${filtered[@]}")
+
+  echo "<p>Report generated on $(date -u +%Y-%m-%dT%H:%M:%SZ), based on ${#evidence_files[@]} evidence files.</p>"
 
   #generate left column
   cat <<CMD_EOF
@@ -744,8 +800,9 @@ CMD_EOF
   <div class="column left" style="background-color:#aaa;">
 CMD_EOF
 
-  for cmdfilename in $(ls evidence); do
-    mid=$(echo ${cmdfilename} | cut -f4 -d_ | sed 's/\.txt//g' | cut -f2- -d.)
+  for cmdpath in "${evidence_files[@]}"; do
+    cmdfilename="${cmdpath##*/}"
+    mid=$(echo "${cmdfilename}" | cut -f4 -d_ | sed 's/\.txt//g' | cut -f2- -d.)
     cat <<CMD_EOF
     <div class="tab">
       <button class="tablinks" onclick="openCity(event, '${cmdfilename}')">${mid}</button>
@@ -756,16 +813,17 @@ CMD_EOF
 
   #generate right column
   echo '<div class="column right">'
-  for cmdfilename in $(ls evidence); do
-    mid=$(echo ${cmdfilename} | cut -f4 -d_ | sed 's/\.txt//g' | tr '.' ',')
-    cmd_date=$(echo ${cmdfilename} | cut -f1,2 -d_)
-    cmd_host=$(echo ${cmdfilename} | cut -f3 -d_)
-    cmd_code=$(selection_to_cmd ${mid}; echo $CMD)
+  for cmdpath in "${evidence_files[@]}"; do
+    cmdfilename="${cmdpath##*/}"
+    mid=$(echo "${cmdfilename}" | cut -f4 -d_ | sed 's/\.txt//g' | tr '.' ',')
+    cmd_date=$(echo "${cmdfilename}" | cut -f1,2 -d_)
+    cmd_host=$(echo "${cmdfilename}" | cut -f3 -d_)
+    cmd_code=$(selection_to_cmd "${mid}"; echo "$CMD")
 
     cat <<CMD_EOF
     <div id="${cmdfilename}" class="tabcontent">
       <h3>[${cmd_date} @ ${cmd_host}] $ ${cmd_code} </h3>
-      <p>$(cat evidence/${cmdfilename} | recode ascii..html | sed 's/$/<\/br>/g')</p>
+      <p>$(recode ascii..html < "${cmdpath}" | sed 's/$/<\/br>/g')</p>
     </div>
 CMD_EOF
   done
@@ -797,7 +855,7 @@ cat << EOF
 |							       |
 +--------------------------------------------------------------+
 
-[*] Linux Incident Response tool written in bash [*]
+[*] Linux Incident Response tool written in bash — v${VERSION} [*]
 
 
 EOF

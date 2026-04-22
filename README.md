@@ -1,4 +1,4 @@
-# TuxResponse
+# TuxResponse (v1.1)
 Linux Incident Response
 
 ![image](https://user-images.githubusercontent.com/13645356/64132606-3a363200-cdd1-11e9-83f9-b1d697af2cf0.png)
@@ -114,7 +114,29 @@ Everything you do is recorded in text files, thus easy to go back and look at th
           4) Init check
           5) chckrootkit
           6) LiME
-          
 
+## Changelog
 
+### v1.1
+
+Hardening and forensic-soundness pass on `tuxresponse.sh`:
+
+- **Forensic soundness**
+  - Evidence filenames now use UTC ISO-8601 (`YYYYMMDDTHHMMSSZ`) instead of local time, for defensible timestamping.
+  - Every captured evidence file is hashed (SHA-256) into a new `evidence/manifest.txt`; disk images get a sibling `.sha256` file.
+  - `modified_files_period_select` no longer `touch`es a timestamp file on the target filesystem (which contaminated `/tmp` atime/mtime before the `find` walk). It now uses `find / -xdev -newermt "1 $opt ago"`.
+- **Security / injection fixes**
+  - Removed `eval ${DD_CMD}` in `_create_disk_image`; the `dd`/`ssh` pipeline runs directly, and the source device is validated against `^/dev/[a-zA-Z0-9]+$` before use.
+  - `dump_process_select` validates the PID is numeric and that `/proc/<pid>` exists before invoking `gcore`.
+  - `exec_CMD` no longer uses `eval`; shell-pipeline commands from the internal catalog are dispatched via `bash -c`.
+- **Robustness**
+  - Script now runs under `set -euo pipefail` with globals initialized up-front.
+  - Fixed `DISTO` → `DISTRO` typo in the Arch Linux detection branch (previously silently misnamed the distro).
+  - Fixed broken Ubuntu dep install: `apt-get install netstat` → `net-tools`.
+  - HTML report generator iterates `evidence/*.txt` via glob (no more `ls` parsing) and skips the manifest; output variables quoted.
+- **Other**
+  - Added `VERSION='1.1'` constant; banner prints the version.
+  - `shellcheck -S error` is clean.
+
+> Note: the menu-driven mode still depends on `.cmds.sh`, `.menu_en.sh`, and `forensics.sh`, which are not present in this repo. Rebuilding the command/menu catalog is tracked as a separate effort.
 
